@@ -46,7 +46,7 @@ The **IoTextra Analog** (ADS1115) model supports:
 
 See the diagrams located in:
 
-- **[Analoh/v.3.02](./Analog/v.3.11/)**  
+- **[Analog/v.3.02](./Analog/v.3.11/)**  
 
 ---
 
