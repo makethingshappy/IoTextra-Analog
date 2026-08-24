@@ -1,0 +1,20 @@
+<svg width="100%" viewBox="0 0 680 60" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>IoTextra Input software compatibility</title>
+<desc>Software compatibility: Node-RED, MQTT, Blynk, Tasmota, Home Assistant</desc>
+
+<rect x="0" y="10" width="100" height="34" rx="17" fill="#8f0000"/>
+<text x="50" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="600" fill="#ffffff">Node-RED</text>
+
+<rect x="108" y="10" width="76" height="34" rx="17" fill="#0c447c"/>
+<text x="146" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="600" fill="#ffffff">MQTT</text>
+
+<rect x="192" y="10" width="72" height="34" rx="17" fill="#007a4a"/>
+<text x="228" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="600" fill="#ffffff">Blynk</text>
+
+<rect x="272" y="10" width="90" height="34" rx="17" fill="#d4680a"/>
+<text x="317" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="600" fill="#ffffff">Tasmota</text>
+
+<rect x="370" y="10" width="148" height="34" rx="17" fill="#0d7ab5"/>
+<text x="444" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="600" fill="#ffffff">Home Assistant</text>
+
+</svg>
