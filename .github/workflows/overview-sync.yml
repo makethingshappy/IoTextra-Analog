@@ -160,11 +160,13 @@ jobs:
           print(f"Fetched {len(all_products)} product(s) from this collection")
 
           def find_product_id(title):
+              t = title.strip()
               for p in all_products:
-                  if p['title'].strip() == title.strip():
+                  if p['title'].strip() == t:
                       return p['id']
               for p in all_products:
-                  if p['title'].strip().startswith(title.strip()):
+                  pt = p['title'].strip()
+                  if pt.startswith(t) and (len(pt) == len(t) or not pt[len(t)].isalnum()):
                       return p['id']
               return None
 
