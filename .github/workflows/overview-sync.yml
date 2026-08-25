@@ -1,0 +1,320 @@
+name: Overview Sync
+
+on:
+  push:
+    paths:
+      - '**/overview.md'
+      - '**/*-logo.svg'
+  workflow_dispatch:
+    inputs:
+      all:
+        description: 'Process ALL modules (one-time bulk sync), not just changed ones'
+        type: boolean
+        default: true
+
+env:
+  # Shopify collection handle that matches this repo's product family.
+  # IoTextra-Digital -> digital-iotextra
+  # IoTextra-Analog  -> analog-iotextra
+  # IoTextra-Combo   -> combo-iotextra
+  # IoTsmart         -> iotsmart
+  # IoTbase          -> iotbase
+  SHOPIFY_COLLECTION_HANDLE: 'digital-iotextra'
+  # Left border stripe color for the overview block, per product family.
+  # IoTextra (all families) -> #8f0000
+  # IoTsmart                -> #22c55e
+  # IoTbase                 -> #2a8fd6
+  OVERVIEW_STRIPE_COLOR: '#8f0000'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine changed folders
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=changed" >> "$GITHUB_OUTPUT"
+            git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" \
+              | grep -E '(/overview\.md$|-logo\.svg$)' \
+              | awk -F/ '{print $1}' | sort -u > /tmp/changed_folders.txt
+            echo "Changed folders:"
+            cat /tmp/changed_folders.txt || true
+          fi
+
+      - name: Sync modules
+        env:
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          GH_TOKEN: ${{ secrets.MTH_SYNC_TOKEN }}
+          REPO: ${{ github.repository }}
+          MODE: ${{ steps.changed.outputs.mode }}
+          COLLECTION_HANDLE: ${{ env.SHOPIFY_COLLECTION_HANDLE }}
+          STRIPE_COLOR: ${{ env.OVERVIEW_STRIPE_COLOR }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re, glob, json, base64
+          import urllib.request, urllib.error, urllib.parse
+
+          repo = os.environ['REPO']
+          shop = '55b706-7c.myshopify.com'
+          client_id = os.environ['SHOPIFY_CLIENT_ID']
+          client_secret = os.environ['SHOPIFY_CLIENT_SECRET']
+          gh_token = os.environ['GH_TOKEN']
+          mode = os.environ['MODE']
+          collection_handle = os.environ['COLLECTION_HANDLE']
+          stripe_color = os.environ['STRIPE_COLOR']
+
+          token_data = urllib.parse.urlencode({
+              'grant_type': 'client_credentials',
+              'client_id': client_id,
+              'client_secret': client_secret,
+          }).encode('utf-8')
+          token_req = urllib.request.Request(
+              f'https://{shop}/admin/oauth/access_token',
+              data=token_data, method='POST'
+          )
+          token_req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+          with urllib.request.urlopen(token_req) as resp:
+              token_result = json.loads(resp.read())
+          shopify_token = token_result['access_token']
+          print(f"Got fresh Shopify access token, scope: {token_result.get('scope')}")
+
+          def gh_api(method, path, payload=None):
+              url = f'https://api.github.com{path}'
+              data = json.dumps(payload).encode('utf-8') if payload else None
+              req = urllib.request.Request(url, data=data, method=method)
+              req.add_header('Authorization', f'Bearer {gh_token}')
+              req.add_header('Accept', 'application/vnd.github+json')
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read())
+
+          def shopify_rest(method, path, payload=None):
+              data = json.dumps(payload).encode('utf-8') if payload else None
+              req = urllib.request.Request(
+                  f'https://{shop}/admin/api/2024-01{path}',
+                  data=data, method=method
+              )
+              req.add_header('Content-Type', 'application/json')
+              req.add_header('X-Shopify-Access-Token', shopify_token)
+              req.add_header('Cache-Control', 'no-cache')
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read())
+
+          def replace_marker(html, marker, new_content, fallback_pattern):
+              start = f'<!-- {marker}_START -->'
+              end = f'<!-- {marker}_END -->'
+              marker_pattern = f'{re.escape(start)}.*?{re.escape(end)}'
+              replacement = f'{start}\n{new_content}\n{end}'
+              new_html, count = re.subn(marker_pattern, replacement, html, flags=re.DOTALL)
+              if count > 0:
+                  return new_html
+              new_html, count = re.subn(fallback_pattern, replacement, html, flags=re.DOTALL)
+              if count == 0:
+                  print(f"  WARNING: could not locate existing {marker} block — skipping Shopify update.")
+                  return html
+              print(f"  {marker}: no markers found, replaced by structure match and added markers.")
+              return new_html
+
+          # Determine which module folders to process
+          if mode == 'all':
+              folders = [d for d in os.listdir('.') if os.path.isdir(d) and not d.startswith('.')]
+          else:
+              try:
+                  with open('/tmp/changed_folders.txt') as f:
+                      folders = [l.strip() for l in f if l.strip()]
+              except FileNotFoundError:
+                  folders = []
+
+          module_folders = [
+              f for f in sorted(folders)
+              if os.path.exists(f'{f}/overview.md')
+          ]
+          print(f"Mode: {mode} | Processing {len(module_folders)} module(s): {module_folders}")
+
+          if not module_folders:
+              print("Nothing to do.")
+              raise SystemExit(0)
+
+          all_products = []
+          collection_id = None
+          for kind in ('custom_collections', 'smart_collections'):
+              result = shopify_rest('GET', f'/{kind}.json?handle={collection_handle}')
+              found = result.get(kind, [])
+              if found:
+                  collection_id = found[0]['id']
+                  break
+          if not collection_id:
+              raise SystemExit(f"ERROR: no collection found with handle {collection_handle!r}")
+          print(f"Using Shopify collection {collection_handle!r} (id {collection_id})")
+
+          result = shopify_rest('GET', f'/collections/{collection_id}/products.json?limit=250&fields=id,title')
+          all_products.extend(result.get('products', []))
+          print(f"Fetched {len(all_products)} product(s) from this collection")
+
+          def find_product_id(title):
+              for p in all_products:
+                  if p['title'].strip() == title.strip():
+                      return p['id']
+              for p in all_products:
+                  if p['title'].strip().startswith(title.strip()):
+                      return p['id']
+              return None
+
+          summary_rows = []
+
+          for folder in module_folders:
+              print(f"\n=== {folder} ===")
+              overview_path = f'{folder}/overview.md'
+              readme_path = f'{folder}/README.md'
+
+              with open(overview_path, encoding='utf-8') as f:
+                  content = f.read().strip()
+              lines = content.split('\n')
+              title = lines[0].lstrip('#').strip()
+              body_lines = [l.strip() for l in lines[1:] if l.strip()]
+
+              logo_candidates = glob.glob(f'{folder}/*-logo.svg')
+              logo_file = os.path.basename(logo_candidates[0]) if logo_candidates else None
+              print(f"  Title: {title!r} | Badge file: {logo_file or '(none — no software badges yet)'}")
+
+              product_id = find_product_id(title)
+              if not product_id:
+                  print(f"  SKIP: no matching Shopify product found for title {title!r}")
+                  summary_rows.append((folder, title, "no", "-", "-"))
+                  continue
+              print(f"  Matched Shopify product id: {product_id}")
+
+              bq = [f"> **{title}**", ">"]
+              for i, l in enumerate(body_lines):
+                  bq.append(f"> {l}")
+                  if i != len(body_lines) - 1:
+                      bq.append(">")
+              blockquote = "\n".join(bq)
+              marker_block = f"<!-- OVERVIEW_START -->\n{blockquote}\n<!-- OVERVIEW_END -->"
+
+              if not os.path.exists(readme_path):
+                  print(f"  SKIP: {readme_path} not found.")
+                  continue
+
+              with open(readme_path, encoding='utf-8') as f:
+                  readme = f.read()
+
+              if '<!-- OVERVIEW_START -->' in readme:
+                  readme = re.sub(
+                      r'<!-- OVERVIEW_START -->.*?<!-- OVERVIEW_END -->',
+                      marker_block, readme, flags=re.DOTALL
+                  )
+              else:
+                  readme = re.sub(r'!\[overview\]\(overview\.svg\)', marker_block, readme)
+
+              if logo_file:
+                  readme = re.sub(r'!\[software\]\([^)]*\)', f'![software]({logo_file})', readme)
+
+              orig_readme = None
+              with open(readme_path, encoding='utf-8') as f:
+                  orig_readme = f.read()
+
+              readme_status = "unchanged"
+              if readme != orig_readme:
+                  with open(readme_path, 'w', encoding='utf-8') as f:
+                      f.write(readme)
+                  existing = gh_api('GET', f'/repos/{repo}/contents/{urllib.parse.quote(readme_path)}')
+                  sha = existing['sha']
+                  new_content_b64 = base64.b64encode(readme.encode('utf-8')).decode('ascii')
+                  gh_api('PUT', f'/repos/{repo}/contents/{urllib.parse.quote(readme_path)}', {
+                      'message': f'Auto-sync overview for {folder}',
+                      'content': new_content_b64,
+                      'sha': sha,
+                  })
+                  print(f"  README.md committed.")
+                  readme_status = "committed"
+              else:
+                  print(f"  README.md already up to date, no commit needed.")
+
+              p_tags = []
+              for i, l in enumerate(body_lines):
+                  is_last = (i == len(body_lines) - 1)
+                  color = "#888888" if is_last else "#444444"
+                  size = 14 if is_last else 16
+                  margin = "margin:0" if is_last else "margin:0 0 4px"
+                  p_tags.append(
+                      f'  <p style="{margin};font-family:\'Roboto Condensed\',sans-serif;'
+                      f'font-size:{size}px;color:{color}">{l}</p>'
+                  )
+              overview_div = (
+                  f'<div style="border-left:4px solid {stripe_color};padding:10px 14px;margin:12px 0;'
+                  'background:#fdf2f2;border-radius:0 6px 6px 0">\n'
+                  f'  <p style="margin:0 0 6px;font-weight:600;font-family:\'Roboto Condensed\',sans-serif;'
+                  f'font-size:19px;color:#111111">{title}</p>\n'
+                  + "\n".join(p_tags) + "\n</div>"
+              )
+
+              try:
+                  product = shopify_rest('GET', f'/products/{product_id}.json')
+              except urllib.error.HTTPError as e:
+                  print(f"  SKIP: Shopify GET failed for product {product_id}: {e}")
+                  continue
+              body_html = product['product']['body_html']
+
+              overview_fallback = (
+                  r'<div style="border-left:4px solid ' + re.escape(stripe_color) + r'[^"]*"[^>]*>.*?</div>'
+                  r'|<img[^>]*src="[^"]*overview\.svg"[^>]*>'
+              )
+              new_body_html = replace_marker(body_html, 'OVERVIEW', overview_div, overview_fallback)
+
+              if logo_file:
+                  # Badge CDN URLs are hardcoded right here — there are only a
+                  # handful of shared badge-set files, uploaded to Shopify Files
+                  # by hand, with fixed names and content. No external file,
+                  # no API lookup, no extra token scopes.
+                  BADGE_CDN_MAP = {
+                      '3-logo.svg': 'https://cdn.shopify.com/s/files/1/0860/7481/8846/files/3-logo.svg?v=1787594973',
+                      '5-logo.svg': 'https://cdn.shopify.com/s/files/1/0860/7481/8846/files/5-logo.svg?v=1787561494',
+                  }
+                  cdn_url = BADGE_CDN_MAP.get(logo_file)
+
+                  if cdn_url:
+                      badge_img = f'<img src="{cdn_url}" style="max-width:1000px;width:100%;height:auto">'
+                      badges_fallback = (
+                          r'<img[^>]*src="[^"]*(?:software\.svg|-logo\.svg)[^"]*"[^>]*>'
+                      )
+                      new_body_html = replace_marker(new_body_html, 'BADGES', badge_img, badges_fallback)
+                      print(f"  Badge CDN url found in BADGE_CDN_MAP and inserted: {cdn_url}")
+                  else:
+                      print(f"  No CDN URL hardcoded for {logo_file!r} in BADGE_CDN_MAP "
+                            f"— leaving badge markup untouched.")
+              else:
+                  print(f"  No badge file for this module — leaving existing badge markup untouched.")
+
+              if new_body_html != body_html:
+                  shopify_rest('PUT', f'/products/{product_id}.json', {
+                      'product': {'id': int(product_id), 'body_html': new_body_html}
+                  })
+                  print(f"  Shopify product updated.")
+                  shopify_status = "updated"
+              else:
+                  print(f"  Shopify product already up to date, no update needed.")
+                  shopify_status = "unchanged"
+
+              summary_rows.append((folder, title, "yes", readme_status, shopify_status))
+
+          # Write a human-readable summary for the GitHub Actions run page
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary_path:
+              with open(summary_path, 'a', encoding='utf-8') as f:
+                  f.write(f"## Overview Sync — mode: {mode}\n\n")
+                  f.write("| Module | Title | Product found | README | Shopify |\n")
+                  f.write("|---|---|---|---|---|\n")
+                  for folder, title, found, readme_st, shopify_st in summary_rows:
+                      f.write(f"| {folder} | {title} | {found} | {readme_st} | {shopify_st} |\n")
+
+          print("\nDone.")
+          PYEOF
