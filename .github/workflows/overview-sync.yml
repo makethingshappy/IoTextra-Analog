@@ -19,7 +19,7 @@ env:
   # IoTextra-Combo   -> combo-iotextra
   # IoTsmart         -> iotsmart
   # IoTbase          -> iotbase
-  SHOPIFY_COLLECTION_HANDLE: 'digital-iotextra'
+  SHOPIFY_COLLECTION_HANDLE: 'analog-iotextra'
   # Left border stripe color for the overview block, per product family.
   # IoTextra (all families) -> #8f0000
   # IoTsmart                -> #22c55e
