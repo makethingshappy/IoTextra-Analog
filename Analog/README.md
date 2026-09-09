@@ -20,5 +20,5 @@ See [SKU.md](SKU.md)
 
 | Version | Notes |
 |---|---|
-| 3.12 | Separated AGND for each ADC · Lite option introduced (lower-cost passive components) |
+| 3.12 | Precision Lite/STD option introduced (lower-cost passive components); minor layout revision |
 | 3.11 | Initial GitHub release |
