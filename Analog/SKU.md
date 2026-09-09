@@ -16,7 +16,7 @@
 
 | Value | Description |
 |---|---|
-| 0 | Pro |
+| 0 | STD |
 | 9 | Lite |
 
 **Communication (c):**
