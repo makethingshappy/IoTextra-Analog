@@ -14,9 +14,9 @@ Each IoTextra-Analog module has its own electrical and mechanical specifications
 
 Module folders:
 
-- **[Analog/v.3.02](./Analog/v.3.11/)**  
+- **[Analog/v.3.12](./Analog/v.3.12/)**  
 - **Analog2** ( Coming Soon )  
-- **Analog3** ( Coming Soon )  
+- **[Analog3/v.3.11](./Analog3/v.3.11/)**  
 
 Refer to each module’s documentation for exact technical data.
 
