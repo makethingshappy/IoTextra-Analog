@@ -1,5 +1,5 @@
 <!-- OVERVIEW_START -->
-> **IoTextra Analog3**
+> **8x AI-ADS7828 - IoTextra Analog3**
 >
 > 8-channel differential analog input module · 12-bit SAR ADC (ADS7828) · up to 50 kSPS · I²C only
 >
