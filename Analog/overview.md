@@ -1,4 +1,4 @@
-# IoTextra Analog
+# 4x AI-ADS1115 - IoTextra Analog
 
 4-channel differential analog input module · 16-bit ADC (ADS1115) · up to 860 SPS · I²C only
 
