@@ -1,0 +1,19 @@
+kind: module
+product: IoTextra Analog
+revision: "3.12"
+# I2C-only module: 2x ADS1115 on HOST SDA/SCL. AP0..AP3, AP6, AP7 are not used.
+# Source: IoTextra Analog 3.12 schematic + datasheet
+i2c:
+  devices:
+    - {chip: ADS1115, ref: U2, channels: [AI1, AI2], address: "0x49 (SB2 open, default) / 0x48 (SB2 closed)", alert: AP4}
+    - {chip: ADS1115, ref: U4, channels: [AI3, AI4], address: "0x4B (SB3 closed, SB4 open, default) / 0x4A (SB3 open, SB4 closed)", alert: AP5}
+# ALERT/RDY outputs (ADS1115 open-drain, optional): U2 -> HOST pin 4 = AP4, U4 -> HOST pin 6 = AP5
+channels:
+  # Differential: ADS input pair = op-amp output (P) vs 2.5 V reference (N)
+  AI1: {adc: U2, mux: AIN0-AIN1}
+  AI2: {adc: U2, mux: AIN2-AIN3}
+  AI3: {adc: U4, mux: AIN0-AIN1}
+  AI4: {adc: U4, mux: AIN2-AIN3}
+# Scaling: Vin = Vdiff * 105k / R ; Iin = Vin / 248.7 ohm (249 ohm shunt loaded by 210k)
+#   R = 24.95k (both jumpers of the channel pair closed, default) or 49.9k (both open)
+#   Jumper pairs: AI1 SB7+SB10, AI2 SB6+SB8, AI3 SB11+SB13, AI4 SB9+SB12
