@@ -1,0 +1,22 @@
+kind: module
+product: IoTextra Analog3
+revision: "3.11"
+# I2C-only module: 1x ADS7828 (U6) on HOST SDA/SCL. AP0..AP7 are not used (HOST pins 3..10 not connected).
+# Source: IoTextra Analog3 3.11 schematic + datasheet
+i2c:
+  devices:
+    - {chip: ADS7828, ref: U6, channels: [IN0, IN1, IN2, IN3, IN4, IN5, IN6, IN7], address: "0x48-0x4B; A0 = SW1-1, A1 = SW1-2, ON = 1; default 0x48 (both OFF)"}
+channels:
+  # ADS7828 single-ended (COM = GND); each input goes through a difference amplifier K = 49.9k / 105k = 0.476
+  # mode: SB open = voltage 0-5 V, SB closed = current 0-20 / 4-20 mA (249 ohm shunt)
+  IN0: {adc_ch: CH0, mode_sb: SB2}
+  IN1: {adc_ch: CH1, mode_sb: SB3}
+  IN2: {adc_ch: CH2, mode_sb: SB4}
+  IN3: {adc_ch: CH3, mode_sb: SB5}
+  IN4: {adc_ch: CH4, mode_sb: SB6}
+  IN5: {adc_ch: CH5, mode_sb: SB7}
+  IN6: {adc_ch: CH6, mode_sb: SB8}
+  IN7: {adc_ch: CH7, mode_sb: SB9}
+# Scaling (internal 2.5 V reference): Vin = code * 2.5 / 4096 / 0.476 ; Iin = Vin / 249 ohm
+# Command byte: 0x80 (single-ended) | channel select bits 6..4 | 0x0C (internal ref ON, ADC ON)
+#   CH0..CH7 select bits: 000, 100, 001, 101, 010, 110, 011, 111
